@@ -12,3 +12,4 @@ youtube_dl
 tenacity
 Flask
 Flask-RESTful
+wget
