@@ -2,7 +2,7 @@ class config:
     BOT_TOKEN = "6215730675:AAFCdyuKVag2AQLE8DuCVeAzmpd4xf0ZHLc"
     APP_ID = "6467350"
     API_HASH = "5deac88ece269f2e31341bdf4ea16d4a"
-    DATABASE_URL = "postgres://ygzevvcj:qMPOESOC81TsI61i_Bhy79LEDql2zyRU@abul.db.elephantsql.com/ygzevvcj"
+    DATABASE_URL = "postgresql://neondb_owner:npg_KRNmjJt62Hys@ep-hidden-credit-a5kpnbo8-pooler.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
     SUDO_USERS = "1538405771" # Sepearted by space.
     SUPPORT_CHAT_LINK = "t.me/luv2seeyoucry"
     DOWNLOAD_DIRECTORY = "./downloads/"
