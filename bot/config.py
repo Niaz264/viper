@@ -1,9 +1,9 @@
 class config:
-    BOT_TOKEN = "6215730675:AAFCdyuKVag2AQLE8DuCVeAzmpd4xf0ZHLc"
-    APP_ID = "6467350"
-    API_HASH = "5deac88ece269f2e31341bdf4ea16d4a"
+    BOT_TOKEN = "6215730675:AAGZ21I90MFWJY42PyiP1PLjgarzG8BQ9tg"
+    APP_ID = "22419004"
+    API_HASH = "34982b52c4a83c2af3ce8f4fe12fe4e1"
     DATABASE_URL = "postgresql://neondb_owner:npg_KRNmjJt62Hys@ep-hidden-credit-a5kpnbo8-pooler.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
-    SUDO_USERS = "1538405771" # Sepearted by space.
+    SUDO_USERS = "5748909356" # Sepearted by space.
     SUPPORT_CHAT_LINK = "t.me/luv2seeyoucry"
     DOWNLOAD_DIRECTORY = "./downloads/"
     G_DRIVE_CLIENT_ID = "202264815644.apps.googleusercontent.com"
