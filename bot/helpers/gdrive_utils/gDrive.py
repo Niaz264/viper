@@ -172,13 +172,13 @@ class GoogleDrive:
 
   @retry(wait=wait_exponential(multiplier=2, min=3, max=6), stop=stop_after_attempt(5),
     retry=retry_if_exception_type(HttpError), before=before_log(LOGGER, logging.DEBUG))
-  def upload_file(self, file_path, mimeType=None, parent_id=None, message=None):
+  def upload_file(self, file_path, mimeType=None, parent_id=None, message=None, updater=None):
       mime_type = mimeType if mimeType else guess_type(file_path)[0]
       mime_type = mime_type if mime_type else "text/plain"
       media_body = MediaFileUpload(
           file_path,
           mimetype=mime_type,
-          chunksize=150*1024*1024,
+          chunksize=5*1024*1024,
           resumable=True
       )
       filename = os.path.basename(file_path)
@@ -192,8 +192,9 @@ class GoogleDrive:
       body["parents"] = [target_parent]
       LOGGER.info(f'Upload: {file_path}')
       try:
-        from bot.helpers.utils import ProgressUpdater
-        updater = ProgressUpdater(message, f"📤 **Uploading File...**\n**Filename:** `{filename}`\n**Size:** `{filesize}`") if message else None
+        if not updater and message:
+            from bot.helpers.utils import ProgressUpdater
+            updater = ProgressUpdater(message, f"📤 **Uploading File...**\n**Filename:** `{filename}`\n**Size:** `{filesize}`")
         request = self.__service.files().create(body=body, media_body=media_body, fields='id', supportsTeamDrives=True)
         response = None
         while response is None:
@@ -246,17 +247,40 @@ class GoogleDrive:
                   updater.update(status.resumable_progress, status.total_size)
       return file_path
 
-  def downloadFolder(self, folder_id, local_path, message=None):
+  class ProxyUpdater:
+      def __init__(self, base_updater, transferred_list, total_sz):
+          self.base_updater = base_updater
+          self.transferred_list = transferred_list
+          self.total_size = total_sz
+          self.current_file_progress = 0
+
+      def update(self, current, total, *args, **kwargs):
+          diff = current - self.current_file_progress
+          self.current_file_progress = current
+          self.transferred_list[0] += diff
+          self.base_updater.update(self.transferred_list[0], self.total_size)
+
+  def downloadFolder(self, folder_id, local_path, message=None, updater=None, total_size=None, transferred_size_list=None):
+      if updater is None and message:
+          from bot.helpers.utils import ProgressUpdater
+          updater = ProgressUpdater(message, f"📥 **Downloading Folder...**\n**Name:** `{os.path.basename(local_path)}`")
+          total_size = self.getFolderSize(folder_id)
+          transferred_size_list = [0]
+
       os.makedirs(local_path, exist_ok=True)
       files = self.getFilesByFolderId(folder_id)
       for file in files:
           file_path = os.path.join(local_path, file.get('name'))
           if file.get('mimeType') == self.__G_DRIVE_DIR_MIME_TYPE:
-              self.downloadFolder(file.get('id'), file_path, message)
+              self.downloadFolder(file.get('id'), file_path, message, updater, total_size, transferred_size_list)
           else:
-              from bot.helpers.utils import ProgressUpdater
-              updater = ProgressUpdater(message, f"📥 **Downloading Folder...**\n**Name:** `{os.path.basename(local_path)}`") if message else None
-              self.download_file(file.get('id'), file_path, updater)
+              file_size = int(file.get('size', 0))
+              if updater:
+                  file_updater = self.ProxyUpdater(updater, transferred_size_list, total_size)
+              else:
+                  file_updater = None
+
+              self.download_file(file.get('id'), file_path, file_updater)
       return local_path
 
   def download(self, link, local_path, message=None):

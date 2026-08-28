@@ -76,6 +76,32 @@ def _unzip(client, message):
 
                 # Clone the local folder to gdrive (similar to cloneFolder but from local)
                 # Let's upload all files from extract_dir to dir_id
+
+                # Calculate total size of the extracted folder
+                total_size = 0
+                for dirpath, _, filenames in os.walk(extract_dir):
+                    for f in filenames:
+                        fp = os.path.join(dirpath, f)
+                        if not os.path.islink(fp):
+                            total_size += os.path.getsize(fp)
+
+                from bot.helpers.utils import ProgressUpdater
+                updater = ProgressUpdater(sent_message, f"📤 **Uploading Folder...**\n**Name:** `{folder_name}`")
+                transferred_size_list = [0]
+
+                class ProxyUpdater:
+                    def __init__(self, base_updater, transferred_list, total_sz):
+                        self.base_updater = base_updater
+                        self.transferred_list = transferred_list
+                        self.total_size = total_sz
+                        self.current_file_progress = 0
+
+                    def update(self, current, total, *args, **kwargs):
+                        diff = current - self.current_file_progress
+                        self.current_file_progress = current
+                        self.transferred_list[0] += diff
+                        self.base_updater.update(self.transferred_list[0], self.total_size)
+
                 def upload_local_folder(local_folder, parent_id):
                     for item in os.listdir(local_folder):
                         item_path = os.path.join(local_folder, item)
@@ -83,11 +109,11 @@ def _unzip(client, message):
                             new_dir_id = gdrive.create_directory(item, parent_id=parent_id)
                             upload_local_folder(item_path, new_dir_id)
                         else:
-                            gdrive.upload_file(item_path, parent_id=parent_id, message=sent_message)
+                            file_updater = ProxyUpdater(updater, transferred_size_list, total_size)
+                            gdrive.upload_file(item_path, parent_id=parent_id, updater=file_updater)
 
-                sent_message.edit(f"📤 **Uploading extracted files to folder: {folder_name}...**")
                 upload_local_folder(extract_dir, dir_id)
-                sent_message.edit(Messages.UPLOADED_SUCCESSFULLY.format(folder_name, gdrive._GoogleDrive__G_DRIVE_DIR_BASE_DOWNLOAD_URL.format(dir_id), "Unknown"))
+                sent_message.edit(Messages.UPLOADED_SUCCESSFULLY.format(folder_name, gdrive._GoogleDrive__G_DRIVE_DIR_BASE_DOWNLOAD_URL.format(dir_id), humanbytes(total_size)))
 
             except Exception as e:
                 LOGGER.error(e)

@@ -40,7 +40,7 @@ class ProgressUpdater:
         self.start_time = time.time()
         self.last_update_time = 0
 
-    def update(self, current, total):
+    def update(self, current, total, *args, **kwargs):
         now = time.time()
         if now - self.last_update_time < 3 and current < total:
             return
