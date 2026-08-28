@@ -63,7 +63,9 @@ def _telegram_file(client, message):
   sent_message.edit(Messages.DOWNLOAD_TG_FILE.format(file.file_name, humanbytes(file.file_size), file.mime_type))
   LOGGER.info(f'Download:{user_id}: {file.file_id}')
   try:
-    file_path = message.download(file_name=DOWNLOAD_DIRECTORY)
+    from bot.helpers.utils import ProgressUpdater
+    updater = ProgressUpdater(sent_message, "📥 **Downloading Telegram File...**")
+    file_path = message.download(file_name=DOWNLOAD_DIRECTORY, progress=updater.update)
     sent_message.edit(Messages.DOWNLOADED_SUCCESSFULLY.format(os.path.basename(file_path), humanbytes(os.path.getsize(file_path))))
     msg = GoogleDrive(user_id).upload_file(file_path, file.mime_type, message=sent_message)
     sent_message.edit(msg)
@@ -80,7 +82,9 @@ def _ytdl(client, message):
     link = message.command[1]
     LOGGER.info(f'YTDL:{user_id}: {link}')
     sent_message.edit(Messages.DOWNLOADING.format(link))
-    result, file_path = utube_dl(link)
+    from bot.helpers.utils import ProgressUpdater
+    updater = ProgressUpdater(sent_message, "📥 **Downloading Video...**")
+    result, file_path = utube_dl(link, updater)
     if result:
       sent_message.edit(Messages.DOWNLOADED_SUCCESSFULLY.format(os.path.basename(file_path), humanbytes(os.path.getsize(file_path))))
       msg = GoogleDrive(user_id).upload_file(file_path, message=sent_message)
