@@ -24,21 +24,36 @@ def download_file(url, dl_path):
       return False, error
 
 
-def utube_dl(link):
+def utube_dl(link, updater=None):
   ytdl_opts = {
-    'outtmpl' : os.path.join(DOWNLOAD_DIRECTORY, '%(title)s'),
+    'outtmpl' : os.path.join(DOWNLOAD_DIRECTORY, '%(title)s.%(ext)s'),
     'noplaylist' : True,
     'logger': LOGGER,
     'format': 'bestvideo+bestaudio/best',
     'geo_bypass_country': 'IN'
   }
+
+  if updater:
+      def progress_hook(d):
+          if d['status'] == 'downloading':
+              current = d.get('downloaded_bytes', 0)
+              total = d.get('total_bytes') or d.get('total_bytes_estimate') or 0
+              if total > 0:
+                  updater.update(current, total)
+      ytdl_opts['progress_hooks'] = [progress_hook]
+
   with yt_dlp.YoutubeDL(ytdl_opts) as ytdl:
     try:
       meta = ytdl.extract_info(link, download=True)
+      if 'requested_downloads' in meta and len(meta['requested_downloads']) > 0:
+          path = meta['requested_downloads'][0].get('filepath')
+      else:
+          path = ytdl.prepare_filename(meta)
+
+      if path and os.path.exists(path):
+          return True, path
+      return False, 'Something went wrong! No video file exists on server.'
     except DownloadError as e:
       return False, str(e)
-    for path in glob.glob(os.path.join(DOWNLOAD_DIRECTORY, '*')):
-      if path.endswith(('.avi', '.mov', '.flv', '.wmv', '.3gp','.mpeg', '.webm', '.mp4', '.mkv')) and \
-          path.startswith(ytdl.prepare_filename(meta)):
-        return True, path
-    return False, 'Something went wrong! No video file exists on server.'
+    except Exception as e:
+      return False, str(e)
