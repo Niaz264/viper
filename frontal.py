@@ -11,4 +11,4 @@ class Greeting (Resource):
         return 'SearchX bot is running'
 
 api.add_resource(Greeting, '/') # Route_1
-app.run(host='0.0.0.0', port=os.environ.get('PORT', 8080))
+app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))

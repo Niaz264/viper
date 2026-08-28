@@ -1,6 +1,6 @@
 import os
 import logging
-from pyrogram import Client
+from pyrogram import Client, enums
 from bot import (
   APP_ID,
   API_HASH,
@@ -28,7 +28,7 @@ if __name__ == "__main__":
         api_id=APP_ID,
         api_hash=API_HASH,
         plugins=plugins,
-        parse_mode="markdown",
+        parse_mode=enums.ParseMode.MARKDOWN,
         workdir=DOWNLOAD_DIRECTORY
     )
     LOGGER.info('Starting Bot !')
