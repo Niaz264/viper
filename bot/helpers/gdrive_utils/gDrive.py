@@ -30,14 +30,19 @@ class GoogleDrive:
     self.__parent_id = idsDB.search_parent(user_id)
 
   def getIdFromUrl(self, link: str):
-      if "folders" in link or "file" in link:
-          regex = r"https://drive\.google\.com/(drive)?/?u?/?\d?/?(mobile)?/?(file)?(folders)?/?d?/([-\w]+)[?+]?/?(w+)?"
-          res = re.search(regex,link)
-          if res is None:
-              raise IndexError("GDrive ID not found.")
-          return res.group(5)
-      parsed = urlparse.urlparse(link)
-      return parse_qs(parsed.query)['id'][0]
+      try:
+          parsed = urlparse.urlparse(link)
+          if parsed.query:
+              q = parse_qs(parsed.query)
+              if 'id' in q:
+                  return q['id'][0]
+      except Exception:
+          pass
+      regex = r"(https?://)?(drive\.google\.com/)(drive)?/?u?/?\d?/?(mobile)?/?(file)?(folders)?/?d?/([-\w]+)[?+]?/?(w+)?"
+      res = re.search(regex, link)
+      if res:
+          return res.group(7)
+      raise IndexError("GDrive ID not found.")
 
   @retry(wait=wait_exponential(multiplier=2, min=3, max=6), stop=stop_after_attempt(5),
     retry=retry_if_exception_type(HttpError), before=before_log(LOGGER, logging.DEBUG))

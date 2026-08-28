@@ -63,10 +63,15 @@ def _revoke(client, message):
 
 @Client.on_message(filters.private & filters.incoming & filters.text & ~CustomFilters.auth_users)
 async def _token(client, message):
-  code = message.text.split("?code=")[1].split("&")[0]
-  token = code.split()[-1]
-  WORD = len(token)
-  if WORD == 73 and token[1] == "/":
+  if "?code=" in message.text:
+    code = message.text.split("?code=")[1].split("&")[0]
+  else:
+    code = message.text.strip()
+
+  # Google OAuth2 authorization codes for native/loopback usually start with '4/' and have a specific length
+  # Typically around 73 chars for standard codes, but sometimes around 32-35 chars depending on the format.
+  # But we can at least check if it starts with '4/' or is reasonably long and doesn't contain spaces.
+  if code and (code.startswith("4/") or (len(code) > 20 and " " not in code)):
     creds = None
     global flow
     if flow:
