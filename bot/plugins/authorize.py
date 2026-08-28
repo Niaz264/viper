@@ -63,8 +63,12 @@ def _revoke(client, message):
 
 @Client.on_message(filters.private & filters.incoming & filters.text & ~CustomFilters.auth_users)
 async def _token(client, message):
-  if "?code=" in message.text:
-    code = message.text.split("?code=")[1].split("&")[0]
+  if "code=" in message.text:
+    match = re.search(r"code=([^&\s]+)", message.text)
+    if match:
+      code = match.group(1)
+    else:
+      code = message.text.strip()
   else:
     code = message.text.strip()
 
