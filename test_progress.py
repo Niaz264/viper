@@ -1,31 +1,5 @@
-import re
-from pyrogram import filters
-from bot.helpers.sql_helper import gDriveDB
-
-
-class CustomFilters:
-    auth_users = filters.create(lambda _, __, message: bool(gDriveDB.search(message.from_user.id)))
-
-
-def humanbytes(size: int) -> str:
-    if not size:
-        return ""
-    power = 2 ** 10
-    number = 0
-    dict_power_n = {
-        0: " ",
-        1: "K",
-        2: "M",
-        3: "G",
-        4: "T",
-        5: "P"
-    }
-    while size > power:
-        size /= power
-        number += 1
-    return str(round(size, 2)) + " " + dict_power_n[number] + 'B'
-
 import time
+from bot.helpers.utils import humanbytes
 
 def get_progress_bar(percentage):
     bar_length = 20
@@ -47,7 +21,7 @@ class ProgressUpdater:
         self.last_update_time = now
 
         percentage = current * 100 / total if total else 0
-        speed = current / (now - self.start_time) if (now - self.start_time) > 0 else 0
+        speed = current / (now - self.start_time) if now - self.start_time > 0 else 0
         eta = (total - current) / speed if speed > 0 else 0
 
         eta_mins, eta_secs = divmod(int(eta), 60)
@@ -56,13 +30,14 @@ class ProgressUpdater:
 
         progress_str = (
             f"**{self.action_text}**\n"
-            f"`[{get_progress_bar(percentage)}] {percentage:.2f}%`\n"
+            f"[{get_progress_bar(percentage)}] {percentage:.2f}%\n"
             f"**Speed**: {humanbytes(speed)}/s\n"
             f"**Done**: {humanbytes(current)} / {humanbytes(total)}\n"
             f"**ETA**: {eta_str}"
         )
-        if self.message:
-            try:
-                self.message.edit(progress_str)
-            except Exception:
-                pass
+        print(progress_str)
+
+p = ProgressUpdater(None, "Downloading")
+p.update(1000000, 10000000)
+time.sleep(3.1)
+p.update(5000000, 10000000)

@@ -11,7 +11,7 @@ def _clone(client, message):
     link = message.command[1]
     LOGGER.info(f'Copy:{user_id}: {link}')
     sent_message = message.reply_text(Messages.CLONING.format(link), quote=True)
-    msg = GoogleDrive(user_id).clone(link)
+    msg = GoogleDrive(user_id).clone(link, sent_message)
     sent_message.edit(msg)
   else:
     message.reply_text(Messages.PROVIDE_GDRIVE_URL.format(BotCommands.Clone[0]))

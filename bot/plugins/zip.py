@@ -17,7 +17,7 @@ def _zip(client, message):
         dl_path = os.path.join(DOWNLOAD_DIRECTORY, str(user_id))
         os.makedirs(dl_path, exist_ok=True)
 
-        downloaded_path = gdrive.download(link, dl_path)
+        downloaded_path = gdrive.download(link, dl_path, sent_message)
 
         if downloaded_path and os.path.exists(downloaded_path):
             sent_message.edit(Messages.ZIPPING)
@@ -34,7 +34,7 @@ def _zip(client, message):
                 shutil.rmtree(tmp_dir)
 
             sent_message.edit(Messages.DOWNLOADED_SUCCESSFULLY.format(f"{zip_filename}.zip", humanbytes(os.path.getsize(zip_filepath))))
-            msg = gdrive.upload_file(zip_filepath, mimeType="application/zip")
+            msg = gdrive.upload_file(zip_filepath, mimeType="application/zip", message=sent_message)
             sent_message.edit(msg)
 
             os.remove(zip_filepath)
@@ -60,7 +60,7 @@ def _unzip(client, message):
         dl_path = os.path.join(DOWNLOAD_DIRECTORY, str(user_id))
         os.makedirs(dl_path, exist_ok=True)
 
-        downloaded_path = gdrive.download(link, dl_path)
+        downloaded_path = gdrive.download(link, dl_path, sent_message)
 
         if downloaded_path and os.path.exists(downloaded_path) and downloaded_path.endswith('.zip'):
             sent_message.edit(Messages.UNZIPPING)
@@ -83,7 +83,7 @@ def _unzip(client, message):
                             new_dir_id = gdrive.create_directory(item, parent_id=parent_id)
                             upload_local_folder(item_path, new_dir_id)
                         else:
-                            gdrive.upload_file(item_path, parent_id=parent_id)
+                            gdrive.upload_file(item_path, parent_id=parent_id, message=sent_message)
 
                 sent_message.edit(f"📤 **Uploading extracted files to folder: {folder_name}...**")
                 upload_local_folder(extract_dir, dir_id)
