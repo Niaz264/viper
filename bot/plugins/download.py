@@ -21,7 +21,7 @@ def _download(client, message):
     if 'drive.google.com' in link:
       sent_message.edit(Messages.CLONING.format(link))
       LOGGER.info(f'Copy:{user_id}: {link}')
-      msg = GoogleDrive(user_id).clone(link)
+      msg = GoogleDrive(user_id).clone(link, sent_message)
       sent_message.edit(msg)
     else:
       if '|' in link:
@@ -38,7 +38,7 @@ def _download(client, message):
       result, file_path = download_file(link, dl_path)
       if result == True:
         sent_message.edit(Messages.DOWNLOADED_SUCCESSFULLY.format(os.path.basename(file_path), humanbytes(os.path.getsize(file_path))))
-        msg = GoogleDrive(user_id).upload_file(file_path)
+        msg = GoogleDrive(user_id).upload_file(file_path, message=sent_message)
         sent_message.edit(msg)
         LOGGER.info(f'Deleteing: {file_path}')
         os.remove(file_path)
@@ -65,7 +65,7 @@ def _telegram_file(client, message):
   try:
     file_path = message.download(file_name=DOWNLOAD_DIRECTORY)
     sent_message.edit(Messages.DOWNLOADED_SUCCESSFULLY.format(os.path.basename(file_path), humanbytes(os.path.getsize(file_path))))
-    msg = GoogleDrive(user_id).upload_file(file_path, file.mime_type)
+    msg = GoogleDrive(user_id).upload_file(file_path, file.mime_type, message=sent_message)
     sent_message.edit(msg)
   except RPCError:
     sent_message.edit(Messages.WENT_WRONG)
@@ -83,7 +83,7 @@ def _ytdl(client, message):
     result, file_path = utube_dl(link)
     if result:
       sent_message.edit(Messages.DOWNLOADED_SUCCESSFULLY.format(os.path.basename(file_path), humanbytes(os.path.getsize(file_path))))
-      msg = GoogleDrive(user_id).upload_file(file_path)
+      msg = GoogleDrive(user_id).upload_file(file_path, message=sent_message)
       sent_message.edit(msg)
       LOGGER.info(f'Deleteing: {file_path}')
       os.remove(file_path)

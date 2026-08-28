@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import traceback
 import logging
 from bot import LOGGER
 from time import sleep
@@ -83,7 +84,20 @@ class GoogleDrive:
                  raise err
 
 
-  def cloneFolder(self, name, local_path, folder_id, parent_id):
+  def getFolderSize(self, folder_id):
+      files = self.getFilesByFolderId(folder_id)
+      total_size = 0
+      for file in files:
+          if file.get('mimeType') == self.__G_DRIVE_DIR_MIME_TYPE:
+              total_size += self.getFolderSize(file.get('id'))
+          else:
+              try:
+                  total_size += int(file.get('size', 0))
+              except ValueError:
+                  pass
+      return total_size
+
+  def cloneFolder(self, name, local_path, folder_id, parent_id, updater=None, total_size=0):
       files = self.getFilesByFolderId(folder_id)
       new_id = None
       if len(files) == 0:
@@ -92,17 +106,23 @@ class GoogleDrive:
         if file.get('mimeType') == self.__G_DRIVE_DIR_MIME_TYPE:
             file_path = os.path.join(local_path, file.get('name'))
             current_dir_id = self.create_directory(file.get('name'))
-            new_id = self.cloneFolder(file.get('name'), file_path, file.get('id'), current_dir_id)
+            new_id = self.cloneFolder(file.get('name'), file_path, file.get('id'), current_dir_id, updater, total_size)
         else:
             try:
                 self.transferred_size += int(file.get('size'))
             except TypeError:
                 pass
+
             try:
                 self.copyFile(file.get('id'), parent_id)
+                if updater and total_size:
+                    updater.update(self.transferred_size, total_size)
                 new_id = parent_id
+
             except Exception as err:
-                return err
+                err_trace = traceback.format_exc()
+                LOGGER.error(err_trace)
+                return err_trace
       return new_id
 
   @retry(wait=wait_exponential(multiplier=2, min=3, max=6), stop=stop_after_attempt(5),
@@ -118,7 +138,7 @@ class GoogleDrive:
           file_id = file.get("id")
           return file_id
 
-  def clone(self, link):
+  def clone(self, link, message=None):
     self.transferred_size = 0
     try:
       file_id = self.getIdFromUrl(link)
@@ -126,25 +146,33 @@ class GoogleDrive:
       return Messages.INVALID_GDRIVE_URL
     try:
       meta = self.__service.files().get(supportsAllDrives=True, fileId=file_id, fields="name,id,mimeType,size").execute()
+      from bot.helpers.utils import ProgressUpdater
       if meta.get("mimeType") == self.__G_DRIVE_DIR_MIME_TYPE:
+        total_size = self.getFolderSize(meta.get('id'))
+        updater = ProgressUpdater(message, f"🗂️ **Cloning Folder...**\n**Name:** `{meta.get('name')}`") if message else None
         dir_id = self.create_directory(meta.get('name'))
-        result = self.cloneFolder(meta.get('name'), meta.get('name'), meta.get('id'), dir_id)
+        result = self.cloneFolder(meta.get('name'), meta.get('name'), meta.get('id'), dir_id, updater, total_size)
         return Messages.COPIED_SUCCESSFULLY.format(meta.get('name'), self.__G_DRIVE_DIR_BASE_DOWNLOAD_URL.format(dir_id), humanbytes(self.transferred_size))
       else:
+        total_size = int(meta.get('size', 0))
+        updater = ProgressUpdater(message, f"🗂️ **Cloning File...**\n**Name:** `{meta.get('name')}`") if message else None
         file = self.copyFile(meta.get('id'), self.__parent_id)
-        return Messages.COPIED_SUCCESSFULLY.format(file.get('name'), self.__G_DRIVE_BASE_DOWNLOAD_URL.format(file.get('id')), humanbytes(int(meta.get('size'))))
+        self.transferred_size += total_size
+        if updater:
+            updater.update(self.transferred_size, total_size)
+        return Messages.COPIED_SUCCESSFULLY.format(file.get('name'), self.__G_DRIVE_BASE_DOWNLOAD_URL.format(file.get('id')), humanbytes(total_size))
     except Exception as err:
       if isinstance(err, RetryError):
         LOGGER.info(f"Total Attempts: {err.last_attempt.attempt_number}")
         err = err.last_attempt.exception()
-      err = str(err).replace('>', '').replace('<', '')
-      LOGGER.error(err)
-      return f"**ERROR:** ```{err}```"
-
+      err_str = str(err).replace(">", "").replace("<", "")
+      err_trace = traceback.format_exc()
+      LOGGER.error(err_trace)
+      return f"**ERROR:** ```{err_trace}```"
 
   @retry(wait=wait_exponential(multiplier=2, min=3, max=6), stop=stop_after_attempt(5),
     retry=retry_if_exception_type(HttpError), before=before_log(LOGGER, logging.DEBUG))
-  def upload_file(self, file_path, mimeType=None, parent_id=None):
+  def upload_file(self, file_path, mimeType=None, parent_id=None, message=None):
       mime_type = mimeType if mimeType else guess_type(file_path)[0]
       mime_type = mime_type if mime_type else "text/plain"
       media_body = MediaFileUpload(
@@ -164,8 +192,15 @@ class GoogleDrive:
       body["parents"] = [target_parent]
       LOGGER.info(f'Upload: {file_path}')
       try:
-        uploaded_file = self.__service.files().create(body=body, media_body=media_body, fields='id', supportsTeamDrives=True).execute()
-        file_id = uploaded_file.get('id')
+        from bot.helpers.utils import ProgressUpdater
+        updater = ProgressUpdater(message, f"📤 **Uploading File...**\n**Filename:** `{filename}`\n**Size:** `{filesize}`") if message else None
+        request = self.__service.files().create(body=body, media_body=media_body, fields='id', supportsTeamDrives=True)
+        response = None
+        while response is None:
+            status, response = request.next_chunk()
+            if status and updater:
+                updater.update(status.resumable_progress, status.total_size)
+        file_id = response.get('id')
         return Messages.UPLOADED_SUCCESSFULLY.format(filename, self.__G_DRIVE_BASE_DOWNLOAD_URL.format(file_id), filesize)
       except HttpError as err:
         if err.resp.get('content-type', '').startswith('application/json'):
@@ -200,27 +235,31 @@ class GoogleDrive:
 
   @retry(wait=wait_exponential(multiplier=2, min=3, max=6), stop=stop_after_attempt(5),
     retry=retry_if_exception_type(HttpError), before=before_log(LOGGER, logging.DEBUG))
-  def download_file(self, file_id, file_path):
+  def download_file(self, file_id, file_path, updater=None):
       request = self.__service.files().get_media(fileId=file_id)
       with io.FileIO(file_path, 'wb') as fh:
           downloader = MediaIoBaseDownload(fh, request)
           done = False
           while done is False:
               status, done = downloader.next_chunk()
+              if status and updater:
+                  updater.update(status.resumable_progress, status.total_size)
       return file_path
 
-  def downloadFolder(self, folder_id, local_path):
+  def downloadFolder(self, folder_id, local_path, message=None):
       os.makedirs(local_path, exist_ok=True)
       files = self.getFilesByFolderId(folder_id)
       for file in files:
           file_path = os.path.join(local_path, file.get('name'))
           if file.get('mimeType') == self.__G_DRIVE_DIR_MIME_TYPE:
-              self.downloadFolder(file.get('id'), file_path)
+              self.downloadFolder(file.get('id'), file_path, message)
           else:
-              self.download_file(file.get('id'), file_path)
+              from bot.helpers.utils import ProgressUpdater
+              updater = ProgressUpdater(message, f"📥 **Downloading Folder...**\n**Name:** `{os.path.basename(local_path)}`") if message else None
+              self.download_file(file.get('id'), file_path, updater)
       return local_path
 
-  def download(self, link, local_path):
+  def download(self, link, local_path, message=None):
       try:
           file_id = self.getIdFromUrl(link)
       except (IndexError, KeyError):
@@ -229,9 +268,11 @@ class GoogleDrive:
           meta = self.__service.files().get(supportsAllDrives=True, fileId=file_id, fields="name,id,mimeType,size").execute()
           path = os.path.join(local_path, meta.get('name'))
           if meta.get("mimeType") == self.__G_DRIVE_DIR_MIME_TYPE:
-              return self.downloadFolder(meta.get('id'), path)
+              return self.downloadFolder(meta.get('id'), path, message)
           else:
-              return self.download_file(meta.get('id'), path)
+              from bot.helpers.utils import ProgressUpdater
+              updater = ProgressUpdater(message, f"📥 **Downloading File...**\n**Name:** `{meta.get('name')}`") if message else None
+              return self.download_file(meta.get('id'), path, updater)
       except RetryError as err:
           err = err.last_attempt.exception()
           err = str(err).replace('>', '').replace('<', '')
