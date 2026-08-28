@@ -10,7 +10,7 @@ import urllib.parse as urlparse
 from bot.config import Messages
 from mimetypes import guess_type
 from urllib.parse import parse_qs
-from bot.helpers.utils import humanbytes
+from bot.helpers.utils import humanbytes, CANCEL_TASKS, TaskCancelledError
 import io
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -103,6 +103,8 @@ class GoogleDrive:
       if len(files) == 0:
         return self.__parent_id
       for file in files:
+        if updater and updater.message and CANCEL_TASKS.get(updater.message.id):
+            raise TaskCancelledError("Task Cancelled")
         if file.get('mimeType') == self.__G_DRIVE_DIR_MIME_TYPE:
             file_path = os.path.join(local_path, file.get('name'))
             current_dir_id = self.create_directory(file.get('name'))
@@ -161,6 +163,8 @@ class GoogleDrive:
         if updater:
             updater.update(self.transferred_size, total_size)
         return Messages.COPIED_SUCCESSFULLY.format(file.get('name'), self.__G_DRIVE_BASE_DOWNLOAD_URL.format(file.get('id')), humanbytes(total_size))
+    except TaskCancelledError:
+      return "❗ **Task Cancelled**"
     except Exception as err:
       if isinstance(err, RetryError):
         LOGGER.info(f"Total Attempts: {err.last_attempt.attempt_number}")
@@ -198,11 +202,15 @@ class GoogleDrive:
         request = self.__service.files().create(body=body, media_body=media_body, fields='id', supportsTeamDrives=True)
         response = None
         while response is None:
+            if updater and updater.message and CANCEL_TASKS.get(updater.message.id):
+                raise TaskCancelledError("Task Cancelled")
             status, response = request.next_chunk()
             if status and updater:
                 updater.update(status.resumable_progress, status.total_size)
         file_id = response.get('id')
         return Messages.UPLOADED_SUCCESSFULLY.format(filename, self.__G_DRIVE_BASE_DOWNLOAD_URL.format(file_id), filesize)
+      except TaskCancelledError:
+        return "❗ **Task Cancelled**"
       except HttpError as err:
         if err.resp.get('content-type', '').startswith('application/json'):
           reason = json.loads(err.content).get('error').get('errors')[0].get('reason')
@@ -242,6 +250,10 @@ class GoogleDrive:
           downloader = MediaIoBaseDownload(fh, request)
           done = False
           while done is False:
+              if updater and getattr(updater, 'message', None) and CANCEL_TASKS.get(updater.message.id):
+                  raise TaskCancelledError("Task Cancelled")
+              elif updater and hasattr(updater, 'base_updater') and updater.base_updater.message and CANCEL_TASKS.get(updater.base_updater.message.id):
+                  raise TaskCancelledError("Task Cancelled")
               status, done = downloader.next_chunk()
               if status and updater:
                   updater.update(status.resumable_progress, status.total_size)
@@ -297,6 +309,10 @@ class GoogleDrive:
               from bot.helpers.utils import ProgressUpdater
               updater = ProgressUpdater(message, f"📥 **Downloading File...**\n**Name:** `{meta.get('name')}`") if message else None
               return self.download_file(meta.get('id'), path, updater)
+      except TaskCancelledError:
+          if message:
+              message.edit("❗ **Task Cancelled**")
+          return None
       except RetryError as err:
           err = err.last_attempt.exception()
           err = str(err).replace('>', '').replace('<', '')
@@ -306,6 +322,28 @@ class GoogleDrive:
           err = str(err).replace('>', '').replace('<', '')
           LOGGER.error(err)
           return None
+
+  def countFolder(self, folder_id, message=None):
+      files = self.getFilesByFolderId(folder_id)
+      total_size = 0
+      file_count = 0
+      folder_count = 0
+      for file in files:
+          if message and CANCEL_TASKS.get(message.id):
+              raise TaskCancelledError("Task Cancelled")
+          if file.get('mimeType') == self.__G_DRIVE_DIR_MIME_TYPE:
+              folder_count += 1
+              s, f, fd = self.countFolder(file.get('id'), message)
+              total_size += s
+              file_count += f
+              folder_count += fd
+          else:
+              file_count += 1
+              try:
+                  total_size += int(file.get('size', 0))
+              except ValueError:
+                  pass
+      return total_size, file_count, folder_count
 
   @retry(wait=wait_exponential(multiplier=2, min=3, max=6), stop=stop_after_attempt(5),
     retry=retry_if_exception_type(HttpError), before=before_log(LOGGER, logging.DEBUG))

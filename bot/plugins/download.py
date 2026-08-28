@@ -35,13 +35,15 @@ def _download(client, message):
         dl_path = DOWNLOAD_DIRECTORY
       LOGGER.info(f'Download:{user_id}: {link}')
       sent_message.edit(Messages.DOWNLOADING.format(link))
-      result, file_path = download_file(link, dl_path)
+      result, file_path = download_file(link, dl_path, message=sent_message)
       if result == True:
         sent_message.edit(Messages.DOWNLOADED_SUCCESSFULLY.format(os.path.basename(file_path), humanbytes(os.path.getsize(file_path))))
         msg = GoogleDrive(user_id).upload_file(file_path, message=sent_message)
         sent_message.edit(msg)
         LOGGER.info(f'Deleteing: {file_path}')
         os.remove(file_path)
+      elif file_path == "Task Cancelled":
+        sent_message.edit("❗ **Task Cancelled**")
       else:
         sent_message.edit(Messages.DOWNLOAD_ERROR.format(file_path, link))
 
@@ -63,16 +65,22 @@ def _telegram_file(client, message):
   sent_message.edit(Messages.DOWNLOAD_TG_FILE.format(file.file_name, humanbytes(file.file_size), file.mime_type))
   LOGGER.info(f'Download:{user_id}: {file.file_id}')
   try:
-    from bot.helpers.utils import ProgressUpdater
+    from bot.helpers.utils import ProgressUpdater, TaskCancelledError
     updater = ProgressUpdater(sent_message, "📥 **Downloading Telegram File...**")
     file_path = message.download(file_name=DOWNLOAD_DIRECTORY, progress=updater.update)
     sent_message.edit(Messages.DOWNLOADED_SUCCESSFULLY.format(os.path.basename(file_path), humanbytes(os.path.getsize(file_path))))
     msg = GoogleDrive(user_id).upload_file(file_path, file.mime_type, message=sent_message)
     sent_message.edit(msg)
+  except TaskCancelledError:
+    sent_message.edit("❗ **Task Cancelled**")
+    if 'file_path' in locals() and file_path and os.path.exists(file_path):
+        os.remove(file_path)
+    return
   except RPCError:
     sent_message.edit(Messages.WENT_WRONG)
-  LOGGER.info(f'Deleteing: {file_path}')
-  os.remove(file_path)
+  if 'file_path' in locals() and file_path and os.path.exists(file_path):
+      LOGGER.info(f'Deleteing: {file_path}')
+      os.remove(file_path)
 
 @Client.on_message(filters.incoming & filters.private & filters.command(BotCommands.YtDl) & CustomFilters.auth_users)
 def _ytdl(client, message):
@@ -91,6 +99,8 @@ def _ytdl(client, message):
       sent_message.edit(msg)
       LOGGER.info(f'Deleteing: {file_path}')
       os.remove(file_path)
+    elif "Task Cancelled" in str(file_path):
+      sent_message.edit("❗ **Task Cancelled**")
     else:
       sent_message.edit(Messages.DOWNLOAD_ERROR.format(file_path, link))
   else:
