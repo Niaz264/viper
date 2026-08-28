@@ -1,6 +1,8 @@
 import os
+import shutil
 from time import sleep
 from pyrogram import Client, filters
+from bot.helpers.qbit.qbit_helper import QbitHelper
 from bot.helpers.sql_helper import gDriveDB, idsDB
 from bot.helpers.utils import CustomFilters, humanbytes
 from bot.helpers.downloader import download_file, utube_dl
@@ -105,3 +107,78 @@ def _ytdl(client, message):
       sent_message.edit(Messages.DOWNLOAD_ERROR.format(file_path, link))
   else:
     message.reply_text(Messages.PROVIDE_YTDL_LINK, quote=True)
+
+
+@Client.on_message(filters.incoming & filters.private & filters.command(['qbit']) & CustomFilters.auth_users)
+def _qbit(client, message):
+  user_id = message.from_user.id
+  if len(message.command) > 1:
+    sent_message = message.reply_text('🕵️**Checking Link...**', quote=True)
+    from bot.helpers.gdrive_utils import GoogleDrive
+    from bot import LOGGER
+
+    args = message.text.split()
+    link = args[1]
+
+    seed = "-seed" in args
+    upload_drive = "-d" in args
+
+    LOGGER.info(f'QBIT:{user_id}: {link} (Seed: {seed}, Drive: {upload_drive})')
+    sent_message.edit(Messages.DOWNLOADING.format(link))
+
+    from bot.helpers.utils import ProgressUpdater
+    updater = ProgressUpdater(sent_message, "📥 **Downloading Torrent...**")
+
+    qbit = QbitHelper()
+    success, res = qbit.add_torrent(link)
+
+    if success:
+        result, file_path = qbit.wait_for_download(link, updater, seed)
+        if result:
+            is_dir = os.path.isdir(file_path)
+            upload_path = file_path
+
+            if is_dir:
+                sent_message.edit("🗜️ **Zipping directory...**")
+                # Zip the directory
+                zip_path = file_path + ".zip"
+                shutil.make_archive(file_path, 'zip', file_path)
+                upload_path = zip_path
+
+            sent_message.edit(Messages.DOWNLOADED_SUCCESSFULLY.format(os.path.basename(upload_path), humanbytes(os.path.getsize(upload_path))))
+
+            if upload_drive:
+                msg = GoogleDrive(user_id).upload_file(upload_path, message=sent_message)
+                sent_message.edit(msg)
+            else:
+                try:
+                    upload_updater = ProgressUpdater(sent_message, "📤 **Uploading to Telegram...**")
+                    message.reply_document(document=upload_path, progress=upload_updater.update, quote=True)
+                    sent_message.edit("✅ **Uploaded to Telegram Successfully.**")
+                except Exception as e:
+                    sent_message.edit(f"❗ **Upload to Telegram Failed:** `{e}`")
+
+            if not seed:
+                LOGGER.info(f'Deleting local files: {file_path}')
+                if is_dir:
+                    shutil.rmtree(file_path)
+                    if os.path.exists(zip_path):
+                        os.remove(zip_path)
+                else:
+                    os.remove(file_path)
+
+                torrent = qbit.get_latest_torrent(link)
+                if torrent:
+                    qbit.delete_torrent(torrent.hash, delete_files=True)
+            else:
+                if is_dir and os.path.exists(zip_path):
+                    os.remove(zip_path)
+
+        elif "Task Cancelled" in str(file_path):
+            sent_message.edit("❗ **Task Cancelled**")
+        else:
+            sent_message.edit(Messages.DOWNLOAD_ERROR.format(file_path, link))
+    else:
+        sent_message.edit(Messages.DOWNLOAD_ERROR.format(res, link))
+  else:
+    message.reply_text("❗**Provide a valid magnet link or torrent url.**\nUsage: `/qbit <link> [-seed] [-d]`", quote=True)

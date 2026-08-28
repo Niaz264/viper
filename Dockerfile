@@ -17,6 +17,7 @@ RUN apt-get update \
         tzdata \
         build-essential \
         libpq-dev \
+        qbittorrent-nox \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

@@ -14,3 +14,4 @@ Flask
 Flask-RESTful
 wget
 psutil
+qbittorrent-api
