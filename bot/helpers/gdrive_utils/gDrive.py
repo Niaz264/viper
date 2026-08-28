@@ -10,9 +10,10 @@ from bot.config import Messages
 from mimetypes import guess_type
 from urllib.parse import parse_qs
 from bot.helpers.utils import humanbytes
+import io
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from googleapiclient.http import MediaFileUpload
+from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 from bot.helpers.sql_helper import gDriveDB, idsDB
 
 
@@ -106,12 +107,13 @@ class GoogleDrive:
 
   @retry(wait=wait_exponential(multiplier=2, min=3, max=6), stop=stop_after_attempt(5),
     retry=retry_if_exception_type(HttpError), before=before_log(LOGGER, logging.DEBUG))
-  def create_directory(self, directory_name):
+  def create_directory(self, directory_name, parent_id=None):
           file_metadata = {
               "name": directory_name,
               "mimeType": self.__G_DRIVE_DIR_MIME_TYPE
           }
-          file_metadata["parents"] = [self.__parent_id]
+          target_parent = parent_id if parent_id else self.__parent_id
+          file_metadata["parents"] = [target_parent]
           file = self.__service.files().create(supportsTeamDrives=True, body=file_metadata).execute()
           file_id = file.get("id")
           return file_id
@@ -142,7 +144,7 @@ class GoogleDrive:
 
   @retry(wait=wait_exponential(multiplier=2, min=3, max=6), stop=stop_after_attempt(5),
     retry=retry_if_exception_type(HttpError), before=before_log(LOGGER, logging.DEBUG))
-  def upload_file(self, file_path, mimeType=None):
+  def upload_file(self, file_path, mimeType=None, parent_id=None):
       mime_type = mimeType if mimeType else guess_type(file_path)[0]
       mime_type = mime_type if mime_type else "text/plain"
       media_body = MediaFileUpload(
@@ -158,7 +160,8 @@ class GoogleDrive:
           "description": "Uploaded using @UploadGdriveBot",
           "mimeType": mime_type,
       }
-      body["parents"] = [self.__parent_id]
+      target_parent = parent_id if parent_id else self.__parent_id
+      body["parents"] = [target_parent]
       LOGGER.info(f'Upload: {file_path}')
       try:
         uploaded_file = self.__service.files().create(body=body, media_body=media_body, fields='id', supportsTeamDrives=True).execute()
@@ -194,6 +197,50 @@ class GoogleDrive:
       return True, file_id
     else:
       return False, Messages.NOT_FOLDER_LINK
+
+  @retry(wait=wait_exponential(multiplier=2, min=3, max=6), stop=stop_after_attempt(5),
+    retry=retry_if_exception_type(HttpError), before=before_log(LOGGER, logging.DEBUG))
+  def download_file(self, file_id, file_path):
+      request = self.__service.files().get_media(fileId=file_id)
+      with io.FileIO(file_path, 'wb') as fh:
+          downloader = MediaIoBaseDownload(fh, request)
+          done = False
+          while done is False:
+              status, done = downloader.next_chunk()
+      return file_path
+
+  def downloadFolder(self, folder_id, local_path):
+      os.makedirs(local_path, exist_ok=True)
+      files = self.getFilesByFolderId(folder_id)
+      for file in files:
+          file_path = os.path.join(local_path, file.get('name'))
+          if file.get('mimeType') == self.__G_DRIVE_DIR_MIME_TYPE:
+              self.downloadFolder(file.get('id'), file_path)
+          else:
+              self.download_file(file.get('id'), file_path)
+      return local_path
+
+  def download(self, link, local_path):
+      try:
+          file_id = self.getIdFromUrl(link)
+      except (IndexError, KeyError):
+          return Messages.INVALID_GDRIVE_URL
+      try:
+          meta = self.__service.files().get(supportsAllDrives=True, fileId=file_id, fields="name,id,mimeType,size").execute()
+          path = os.path.join(local_path, meta.get('name'))
+          if meta.get("mimeType") == self.__G_DRIVE_DIR_MIME_TYPE:
+              return self.downloadFolder(meta.get('id'), path)
+          else:
+              return self.download_file(meta.get('id'), path)
+      except RetryError as err:
+          err = err.last_attempt.exception()
+          err = str(err).replace('>', '').replace('<', '')
+          LOGGER.error(err)
+          return None
+      except Exception as err:
+          err = str(err).replace('>', '').replace('<', '')
+          LOGGER.error(err)
+          return None
 
   @retry(wait=wait_exponential(multiplier=2, min=3, max=6), stop=stop_after_attempt(5),
     retry=retry_if_exception_type(HttpError), before=before_log(LOGGER, logging.DEBUG))
