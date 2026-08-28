@@ -19,7 +19,13 @@ def _zip(client, message):
 
         downloaded_path = gdrive.download(link, dl_path, sent_message)
 
-        if downloaded_path and os.path.exists(downloaded_path):
+        if downloaded_path == "Task Cancelled" or not downloaded_path:
+            if downloaded_path != "Task Cancelled":
+                try:
+                    sent_message.edit(Messages.WENT_WRONG)
+                except Exception:
+                    pass
+        elif downloaded_path and os.path.exists(downloaded_path):
             sent_message.edit(Messages.ZIPPING)
             zip_filename = f"{os.path.basename(downloaded_path)}"
             zip_filepath = os.path.join(DOWNLOAD_DIRECTORY, f"{zip_filename}.zip")
@@ -62,7 +68,13 @@ def _unzip(client, message):
 
         downloaded_path = gdrive.download(link, dl_path, sent_message)
 
-        if downloaded_path and os.path.exists(downloaded_path) and downloaded_path.endswith('.zip'):
+        if downloaded_path == "Task Cancelled" or not downloaded_path:
+             if downloaded_path != "Task Cancelled":
+                 try:
+                     sent_message.edit(Messages.WENT_WRONG)
+                 except Exception:
+                     pass
+        elif downloaded_path and os.path.exists(downloaded_path) and downloaded_path.endswith('.zip'):
             sent_message.edit(Messages.UNZIPPING)
             extract_dir = os.path.join(DOWNLOAD_DIRECTORY, f"extract_{user_id}")
             os.makedirs(extract_dir, exist_ok=True)
@@ -110,14 +122,21 @@ def _unzip(client, message):
                             upload_local_folder(item_path, new_dir_id)
                         else:
                             file_updater = ProxyUpdater(updater, transferred_size_list, total_size)
-                            gdrive.upload_file(item_path, parent_id=parent_id, updater=file_updater)
+                            msg = gdrive.upload_file(item_path, parent_id=parent_id, updater=file_updater)
+                            if "Task Cancelled" in str(msg):
+                                from bot.helpers.utils import TaskCancelledError
+                                raise TaskCancelledError("Task Cancelled")
 
                 upload_local_folder(extract_dir, dir_id)
                 sent_message.edit(Messages.UPLOADED_SUCCESSFULLY.format(folder_name, gdrive._GoogleDrive__G_DRIVE_DIR_BASE_DOWNLOAD_URL.format(dir_id), humanbytes(total_size)))
 
             except Exception as e:
-                LOGGER.error(e)
-                sent_message.edit(Messages.UPLOAD_ERROR.format(str(e)))
+                from bot.helpers.utils import TaskCancelledError
+                if isinstance(e, TaskCancelledError):
+                     sent_message.edit("❗ **Task Cancelled**")
+                else:
+                     LOGGER.error(e)
+                     sent_message.edit(Messages.UPLOAD_ERROR.format(str(e)))
 
             os.remove(downloaded_path)
             shutil.rmtree(extract_dir)

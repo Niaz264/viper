@@ -27,6 +27,11 @@ def humanbytes(size: int) -> str:
 
 import time
 
+CANCEL_TASKS = {}
+
+class TaskCancelledError(Exception):
+    pass
+
 def get_progress_bar(percentage):
     bar_length = 20
     filled_length = int(bar_length * percentage // 100)
@@ -41,6 +46,9 @@ class ProgressUpdater:
         self.last_update_time = 0
 
     def update(self, current, total, *args, **kwargs):
+        if self.message and CANCEL_TASKS.get(self.message.id):
+            raise TaskCancelledError("Task Cancelled")
+
         now = time.time()
         if now - self.last_update_time < 3 and current < total:
             return
