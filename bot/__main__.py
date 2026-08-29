@@ -1,11 +1,12 @@
 import os
 import logging
-from pyrogram import Client, enums
+from pyrogram import Client, enums, idle
 from bot import (
   APP_ID,
   API_HASH,
   BOT_TOKEN,
-  DOWNLOAD_DIRECTORY
+  DOWNLOAD_DIRECTORY,
+  SUDO_USERS
   )
 
 logging.basicConfig(
@@ -32,5 +33,13 @@ if __name__ == "__main__":
         workdir=DOWNLOAD_DIRECTORY
     )
     LOGGER.info('Starting Bot !')
-    app.run()
+    app.start()
+    for user in SUDO_USERS:
+        try:
+            app.send_message(user, "**Bot Started Successfully !**")
+        except Exception as e:
+            LOGGER.error(f"Failed to send start message to {user}: {e}")
+
+    idle()
+    app.stop()
     LOGGER.info('Bot Stopped !')

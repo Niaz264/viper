@@ -7,6 +7,8 @@ from sys import executable
 from pyrogram import Client, filters
 from pyrogram.errors import FloodWait, RPCError
 from bot import SUDO_USERS, DOWNLOAD_DIRECTORY, LOGGER
+from bot.helpers.sql_helper.bandwidthDB import get_bandwidth
+from bot.helpers.utils import humanbytes
 
 
 @Client.on_message(filters.private & filters.incoming & filters.command(['log']) & filters.user(SUDO_USERS), group=2)
@@ -39,10 +41,17 @@ def _sys_details(client, message):
     mem = psutil.virtual_memory()
     disk = psutil.disk_usage('/')
 
+    inbound, outbound = get_bandwidth()
+    total = inbound + outbound
+
     sys_info = (
         f"**System Details:**\n\n"
         f"**CPU Usage:** {cpu}%\n"
         f"**Memory Usage:** {mem.percent}% ({mem.used // (1024 ** 2)}MB / {mem.total // (1024 ** 2)}MB)\n"
-        f"**Disk Usage:** {disk.percent}% ({disk.used // (1024 ** 3)}GB / {disk.total // (1024 ** 3)}GB)\n"
+        f"**Disk Usage:** {disk.percent}% ({disk.used // (1024 ** 3)}GB / {disk.total // (1024 ** 3)}GB)\n\n"
+        f"📊 **Bandwidth Consumption:**\n"
+        f"**Inbound:** `{humanbytes(inbound)}`\n"
+        f"**Outbound:** `{humanbytes(outbound)}`\n"
+        f"**Total:** `{humanbytes(total)}`"
     )
     message.reply_text(sys_info, quote=True)

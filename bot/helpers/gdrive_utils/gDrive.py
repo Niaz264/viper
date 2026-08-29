@@ -53,7 +53,7 @@ class GoogleDrive:
       q = f"'{folder_id}' in parents"
       files = []
       while True:
-          response = self.__service.files().list(supportsTeamDrives=True,
+          response = self.__service.files().list(supportsAllDrives=True,
                                                  includeTeamDriveItems=True,
                                                  q=q,
                                                  spaces='drive',
@@ -136,7 +136,7 @@ class GoogleDrive:
           }
           target_parent = parent_id if parent_id else self.__parent_id
           file_metadata["parents"] = [target_parent]
-          file = self.__service.files().create(supportsTeamDrives=True, body=file_metadata).execute()
+          file = self.__service.files().create(supportsAllDrives=True, body=file_metadata).execute()
           file_id = file.get("id")
           return file_id
 
@@ -199,7 +199,7 @@ class GoogleDrive:
         if not updater and message:
             from bot.helpers.utils import ProgressUpdater
             updater = ProgressUpdater(message, f"📤 **Uploading File...**\n**Filename:** `{filename}`\n**Size:** `{filesize}`")
-        request = self.__service.files().create(body=body, media_body=media_body, fields='id', supportsTeamDrives=True)
+        request = self.__service.files().create(body=body, media_body=media_body, fields='id', supportsAllDrives=True)
         response = None
         while response is None:
             if updater and updater.message and CANCEL_TASKS.get(updater.message.id):
@@ -208,6 +208,8 @@ class GoogleDrive:
             if status and updater:
                 updater.update(status.resumable_progress, status.total_size)
         file_id = response.get('id')
+        from bot.helpers.sql_helper.bandwidthDB import add_outbound
+        add_outbound(os.path.getsize(file_path))
         return Messages.UPLOADED_SUCCESSFULLY.format(filename, self.__G_DRIVE_BASE_DOWNLOAD_URL.format(file_id), filesize)
       except TaskCancelledError:
         return "❗ **Task Cancelled**"
@@ -353,7 +355,7 @@ class GoogleDrive:
     except (IndexError, KeyError):
       return Messages.INVALID_GDRIVE_URL
     try:
-      self.__service.files().delete(fileId=file_id, supportsTeamDrives=True).execute()
+      self.__service.files().delete(fileId=file_id, supportsAllDrives=True).execute()
       return Messages.DELETED_SUCCESSFULLY.format(file_id)
     except HttpError as err:
       if err.resp.get('content-type', '').startswith('application/json'):
