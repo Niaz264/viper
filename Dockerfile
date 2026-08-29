@@ -18,6 +18,7 @@ RUN apt-get update \
         build-essential \
         libpq-dev \
         qbittorrent-nox \
+        aria2 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

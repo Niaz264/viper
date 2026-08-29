@@ -26,7 +26,7 @@
 ### Installation
 - Install required modules.
 ```sh
-apt install -y git python3 ffmpeg
+apt install -y git python3 ffmpeg aria2
 ```
 - Clone this git repository.
 ```sh 

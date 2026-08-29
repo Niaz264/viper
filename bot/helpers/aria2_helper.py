@@ -10,7 +10,7 @@ class Aria2Helper:
         try:
             cmd = [
                 "aria2c",
-                "--console-log-level=warn",
+                "--console-log-level=notice",
                 "--summary-interval=1",
                 "-d", dl_path,
                 url
@@ -31,7 +31,9 @@ class Aria2Helper:
                     raise TaskCancelledError("Task Cancelled")
 
                 # Check for file path
-                if line.startswith("FILE:"):
+                if "Download complete:" in line:
+                    downloaded_file = line.split("Download complete:")[1].strip()
+                elif line.startswith("FILE:"):
                     downloaded_file = line.split("FILE:")[1].strip()
 
                 # Check for progress
