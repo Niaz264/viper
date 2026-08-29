@@ -41,6 +41,10 @@ def _download(client, message):
       result, file_path = download_file(link, dl_path, message=sent_message)
       if result == True:
         sent_message.edit(Messages.DOWNLOADED_SUCCESSFULLY.format(os.path.basename(file_path), humanbytes(os.path.getsize(file_path))))
+
+        from bot.helpers.sql_helper.bandwidthDB import add_inbound
+
+        add_inbound(os.path.getsize(file_path))
         msg = GoogleDrive(user_id).upload_file(file_path, message=sent_message)
         sent_message.edit(msg)
         LOGGER.info(f'Deleteing: {file_path}')
@@ -72,6 +76,10 @@ def _telegram_file(client, message):
     updater = ProgressUpdater(sent_message, "📥 **Downloading Telegram File...**")
     file_path = message.download(file_name=DOWNLOAD_DIRECTORY, progress=updater.update)
     sent_message.edit(Messages.DOWNLOADED_SUCCESSFULLY.format(os.path.basename(file_path), humanbytes(os.path.getsize(file_path))))
+
+    from bot.helpers.sql_helper.bandwidthDB import add_inbound
+
+    add_inbound(os.path.getsize(file_path))
     msg = GoogleDrive(user_id).upload_file(file_path, file.mime_type, message=sent_message)
     sent_message.edit(msg)
   except TaskCancelledError:
@@ -88,26 +96,49 @@ def _telegram_file(client, message):
 @Client.on_message(filters.incoming & filters.private & filters.command(BotCommands.YtDl) & CustomFilters.auth_users)
 def _ytdl(client, message):
   user_id = message.from_user.id
-  if len(message.command) > 1:
+  args = message.text.split()
+  if len(args) > 1:
+    upload_drive = "-d" in args
+    link = next((arg for arg in args[1:] if arg != "-d"), None)
+    if not link:
+        message.reply_text(Messages.PROVIDE_YTDL_LINK, quote=True)
+        return
+
     sent_message = message.reply_text('🕵️**Checking Link...**', quote=True)
-    link = message.command[1]
-    LOGGER.info(f'YTDL:{user_id}: {link}')
+    LOGGER.info(f'YTDL:{user_id}: {link} (Drive: {upload_drive})')
     sent_message.edit(Messages.DOWNLOADING.format(link))
     from bot.helpers.utils import ProgressUpdater
     updater = ProgressUpdater(sent_message, "📥 **Downloading Video...**")
     result, file_path = utube_dl(link, updater)
     if result:
       sent_message.edit(Messages.DOWNLOADED_SUCCESSFULLY.format(os.path.basename(file_path), humanbytes(os.path.getsize(file_path))))
-      msg = GoogleDrive(user_id).upload_file(file_path, message=sent_message)
-      sent_message.edit(msg)
-      LOGGER.info(f'Deleteing: {file_path}')
-      os.remove(file_path)
+
+      from bot.helpers.sql_helper.bandwidthDB import add_inbound
+
+      add_inbound(os.path.getsize(file_path))
+
+      if upload_drive:
+          msg = GoogleDrive(user_id).upload_file(file_path, message=sent_message)
+          sent_message.edit(msg)
+      else:
+          try:
+              upload_updater = ProgressUpdater(sent_message, "📤 **Uploading to Telegram...**")
+              message.reply_document(document=file_path, progress=upload_updater.update, quote=True)
+              sent_message.edit("✅ **Uploaded to Telegram Successfully.**")
+              from bot.helpers.sql_helper.bandwidthDB import add_outbound
+              add_outbound(os.path.getsize(file_path))
+          except Exception as e:
+              sent_message.edit(f"❗ **Upload to Telegram Failed:** `{e}`")
+
+      LOGGER.info(f'Deleting: {file_path}')
+      if os.path.exists(file_path):
+          os.remove(file_path)
     elif "Task Cancelled" in str(file_path):
       sent_message.edit("❗ **Task Cancelled**")
     else:
       sent_message.edit(Messages.DOWNLOAD_ERROR.format(file_path, link))
   else:
-    message.reply_text(Messages.PROVIDE_YTDL_LINK, quote=True)
+    message.reply_text("❗**Provide a valid yt-dlp supported link.**\nUsage: `/ytdl <link> [-d]`", quote=True)
 
 
 @Client.on_message(filters.incoming & filters.private & filters.command(['qbit']) & CustomFilters.auth_users)
@@ -158,6 +189,8 @@ def _qbit(client, message):
                         upload_updater = ProgressUpdater(sent_message, "📤 **Uploading to Telegram...**")
                         message.reply_document(document=upload_path, progress=upload_updater.update, quote=True)
                         sent_message.edit("✅ **Uploaded to Telegram Successfully.**")
+                        from bot.helpers.sql_helper.bandwidthDB import add_outbound
+                        add_outbound(os.path.getsize(upload_path))
                     except Exception as e:
                         sent_message.edit(f"❗ **Upload to Telegram Failed:** `{e}`")
             else:
@@ -231,6 +264,10 @@ def _mir(client, message):
     if result:
       sent_message.edit(Messages.DOWNLOADED_SUCCESSFULLY.format(os.path.basename(file_path), humanbytes(os.path.getsize(file_path))))
 
+      from bot.helpers.sql_helper.bandwidthDB import add_inbound
+
+      add_inbound(os.path.getsize(file_path))
+
       if upload_drive:
           msg = GoogleDrive(user_id).upload_file(file_path, message=sent_message)
           sent_message.edit(msg)
@@ -239,6 +276,8 @@ def _mir(client, message):
               upload_updater = ProgressUpdater(sent_message, "📤 **Uploading to Telegram...**")
               message.reply_document(document=file_path, progress=upload_updater.update, quote=True)
               sent_message.edit("✅ **Uploaded to Telegram Successfully.**")
+              from bot.helpers.sql_helper.bandwidthDB import add_outbound
+              add_outbound(os.path.getsize(file_path))
           except Exception as e:
               sent_message.edit(f"❗ **Upload to Telegram Failed:** `{e}`")
 
